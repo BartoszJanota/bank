@@ -1,0 +1,3 @@
+curl -v -H "Content-Type: application/json" \
+	 -X POST http://localhost:9999/bank/accounts \
+	 -d '{"userName": "John"}'
