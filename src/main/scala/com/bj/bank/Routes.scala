@@ -3,7 +3,7 @@ package com.bj.bank
 import akka.http.scaladsl.marshalling.ToResponseMarshallable
 import akka.http.scaladsl.model.StatusCodes._
 import akka.http.scaladsl.server.Directives
-import com.bj.bank.models.{AccountReq, CustomerReq, TransferSendReq}
+import com.bj.bank.models.{AccountReq, CustomerReq, TransferReq}
 import com.bj.bank.services.{AccountsService, CustomersService, TransfersService}
 import de.heikoseeberger.akkahttpjson4s.Json4sSupport
 import org.json4s.ext.JodaTimeSerializers
@@ -40,9 +40,7 @@ trait Routes extends Directives with Json4sSupport {
         path(Segment) { customerId =>
           pathEnd {
             get {
-              complete(ToResponseMarshallable {
-                fetchCustomer(customerId)
-              })
+              complete(ToResponseMarshallable(fetchCustomer(customerId)))
             }
           } ~
             pathPrefix("accounts") {
@@ -71,32 +69,72 @@ trait Routes extends Directives with Json4sSupport {
         }
     } ~
       pathPrefix("transfers") {
-        pathEnd {
-          get {
-            complete(ToResponseMarshallable(""))
-          }
-        } ~
-          path(Segment) { accNumber =>
+        pathPrefix("external") {
+          pathEnd {
+            get {
+              complete(ToResponseMarshallable(transfersService.getAll(internal = false)))
+            }
+          } ~
+          path(Segment) { customerId =>
             pathPrefix("send") {
               pathEnd {
                 post {
-                  entity(as[TransferSendReq]) { req =>
-                    complete(ToResponseMarshallable(transfersService.send(accNumber)))
+                  entity(as[TransferReq]) { req =>
+                    complete(ToResponseMarshallable(sendMoney(customerId)))
                   }
                 }
               }
-            } ~
-              pathPrefix("receive") {
-                pathEnd {
-                  post {
-                    entity(as[TransferReceiveReq]) { req =>
-                      complete("")
-                    }
-                  }
+            }
+          } ~
+          pathPrefix("receive") {
+            pathEnd {
+              post {
+                entity(as[TransferReq]) { req =>
+                  complete(ToResponseMarshallable(receiveMoney))
                 }
               }
+            }
           }
+        } ~
+        pathPrefix("internal"){
+          pathEnd {
+            get {
+              complete(ToResponseMarshallable(transfersService.getAll(internal = true)))
+            } ~
+            path(Segment) { customerId =>
+              pathEnd {
+                post {
+                  entity(as[TransferReq]) { req =>
+                    complete(ToResponseMarshallable(internal(customerId)))
+                  }
+                }
+              }
+            }
+          }
+        }
       }
+  }
+
+  def internal(customerId: String)(req: TransferReq) = {
+    transfersService.internal(customerId, req) {
+      case Some(balance) => balance
+      case None => BadRequest
+    }
+  }
+
+
+  private def receiveMoney()(req: TransferReq) = {
+    transfersService.receive(req) match {
+      case Some(balance) => balance
+      case None => BadRequest
+    }
+  }
+
+  private def sendMoney(customerId: String)(req: TransferReq) = {
+    transfersService.send(customerId, req) match {
+      case Some(balance) => balance
+      case None => BadRequest
+    }
   }
 
   private def addAccount(customerId: String, req: AccountReq) = {
@@ -108,7 +146,7 @@ trait Routes extends Directives with Json4sSupport {
 
   private def fetchCustomerAccount(customerId: String, accNumber: String) = {
     accountsService.get(customerId, accNumber) match {
-      case Some(accounts) => accounts
+      case Some(account) => account
       case None => NotFound
     }
   }

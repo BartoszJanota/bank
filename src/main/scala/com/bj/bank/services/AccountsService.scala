@@ -2,8 +2,9 @@ package com.bj.bank.services
 
 import java.util.concurrent.ConcurrentHashMap
 
-import com.bj.bank.exceptions.{AccountNotFoundEx, NotEnoughMoneyEx}
-import com.bj.bank.models.{Account, AccountReq, CustomerReq}
+import com.bj.bank.exceptions.{AccountNotFoundEx, CustomerNotFoundEx, NotEnoughMoneyEx}
+import com.bj.bank.models.Account._
+import com.bj.bank.models.{Account, AccountReq, CustomerReq, TransferReq}
 
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext
@@ -11,7 +12,27 @@ import scala.concurrent.ExecutionContext
 class AccountsService(implicit val executionContext: ExecutionContext) {
   val accounts: mutable.Map[String, ConcurrentHashMap[String, Account]] = mutable.Map.empty
 
-  def add(customerId: String, req: AccountReq): Option[Account] = {
+  def lookupInternalSender(customerId: String, fromAccNumber: String) = {
+    accounts.get(customerId).flatMap {customerAccounts =>
+      if (customerAccounts.contains(fromAccNumber)){
+        Some(customerId)
+      } else {
+        None
+      }
+    }
+  }
+
+
+  def lookupAccount(accNumber: String) = {
+    accounts.toStream
+      .find { customerAccounts =>
+        customerAccounts._2.containsKey(accNumber)
+      }
+      .map(customerAccounts => customerAccounts._1)
+
+  }
+
+  def add(customerId: String, req: AccountReq) = {
     val acc = Account(req)
     accounts.get(customerId) match {
       case Some(customerAccounts) => {
@@ -19,8 +40,7 @@ class AccountsService(implicit val executionContext: ExecutionContext) {
         Some(acc)
       }
       case _ => None
-
-
+    }
   }
 
   def getAllFor(customerId: String) = {
@@ -35,30 +55,59 @@ class AccountsService(implicit val executionContext: ExecutionContext) {
     acc
   }
 
-  def update(acc: Account, saldo: BigDecimal) = {
-    acc.copy(acc.userName, acc.number, acc.balance)
-  }
-
-  def deductMoney(accNumber: String, amount: BigDecimal) = {
-    accounts.get(accNumber) match {
-      case Some(acc) => {
-        val newBalance = acc.balance - amount
-        if (newBalance > 0L) {
-          accounts.put(accNumber, update(acc, newBalance))
+  def addMoney(customerId: String, accNumber: String, amount: BigDecimal) = {
+    accounts.get(customerId) match {
+      case Some(customerAccounts) =>
+        if (customerAccounts.containsKey(accNumber)) {
+          val acc = customerAccounts.get(accNumber)
+          val newBalance = acc.balance + amount
+          customerAccounts.put(accNumber, updateBalance(acc, newBalance))
           Right(newBalance)
+        } else {
+          Left(AccountNotFoundEx)
         }
-        else {
-          Left(NotEnoughMoneyEx(newBalance))
-        }
-      }
-      case None => Left(AccountNotFoundEx)
+      case None => Left(CustomerNotFoundEx)
     }
   }
 
-  def create(req: AccountReq) = {
-    val acc = Account(req)
-    accounts += (acc.number -> acc)
-    acc
+
+  def deductMoney(customerId: String, accNumber: String, amount: BigDecimal) = {
+    accounts.get(customerId) match {
+      case Some(customerAccounts) =>
+        if (customerAccounts.containsKey(accNumber)) {
+          val acc = customerAccounts.get(accNumber)
+          val newBalance = acc.balance - amount
+          if (newBalance > 0L) {
+            customerAccounts.put(accNumber, updateBalance(acc, newBalance))
+            Right(newBalance)
+          }
+          else {
+            Left(NotEnoughMoneyEx(newBalance))
+          }
+        } else {
+          Left(AccountNotFoundEx)
+        }
+      case None => Left(CustomerNotFoundEx)
+    }
+  }
+
+  def transfer(fromCustomerId: String, toCustomerId: String, req: TransferReq) = {
+    accounts.get(fromCustomerId) match {
+      case Some(fromCustomerAccounts) =>
+        val fromAccount = fromCustomerAccounts.get(req.fromAccNumber)
+        val toCustomerAccounts = accounts(toCustomerId)
+        val toAccount = toCustomerAccounts.get(req.toAccNumber)
+        val fromNewBalance = fromAccount.balance - req.amount
+        if(fromNewBalance > 0){
+          fromCustomerAccounts.put(req.fromAccNumber, updateBalance(fromAccount, fromNewBalance))
+          val toNewBalance = toAccount.balance + req.amount
+          toCustomerAccounts.put(req.toAccNumber, updateBalance(toAccount, toNewBalance))
+          Right(fromNewBalance, toNewBalance)
+        } else {
+          Left(NotEnoughMoneyEx(fromNewBalance))
+        }
+      case None => Left(CustomerNotFoundEx)
+    }
   }
 
   def getAll() = accounts.values
@@ -67,9 +116,10 @@ class AccountsService(implicit val executionContext: ExecutionContext) {
     accounts.get(customerId) match {
       case Some(customerAccounts) =>
         if (customerAccounts.containsKey(accNumber)) {
-          customerAccounts.get(accNumber)
+          Some(customerAccounts.get(accNumber))
+        } else {
+          None
         }
-
       case _ => None
     }
   }
