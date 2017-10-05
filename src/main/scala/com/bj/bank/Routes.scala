@@ -1,6 +1,7 @@
 package com.bj.bank
 
 import akka.http.scaladsl.marshalling.ToResponseMarshallable
+import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.model.StatusCodes._
 import akka.http.scaladsl.server.Directives
 import com.bj.bank.models.{AccountReq, CustomerReq, TransferReq}
@@ -19,18 +20,20 @@ trait Routes extends Directives with Json4sSupport {
 
   implicit def json4sFormats: Formats = DefaultFormats ++ JodaTimeSerializers.all
 
-  val accountsService = new AccountsService()
+  import akka.http.scaladsl.marshalling.Marshaller._
 
-  val customersService = new CustomersService(accountsService)
+  implicit def accountsService: AccountsService
 
-  val transfersService = new TransfersService(accountsService)
+  implicit def customersService: CustomersService
+
+  implicit def transfersService: TransfersService
 
   val routes = pathPrefix("bank") {
     pathPrefix("customers") {
       pathEnd {
         post {
           entity(as[CustomerReq]) { req =>
-            complete(ToResponseMarshallable(customersService.create(req)))
+            complete(ToResponseMarshallable(StatusCodes.Created -> customersService.create(req)))
           }
         } ~
           get {
@@ -75,48 +78,48 @@ trait Routes extends Directives with Json4sSupport {
               complete(ToResponseMarshallable(transfersService.getAll(internal = false)))
             }
           } ~
-          path(Segment) { customerId =>
-            pathPrefix("send") {
-              pathEnd {
-                post {
-                  entity(as[TransferReq]) { req =>
-                    complete(ToResponseMarshallable(sendMoney(customerId)))
-                  }
-                }
-              }
-            }
-          } ~
-          pathPrefix("receive") {
-            pathEnd {
-              post {
-                entity(as[TransferReq]) { req =>
-                  complete(ToResponseMarshallable(receiveMoney))
-                }
-              }
-            }
-          }
-        } ~
-        pathPrefix("internal"){
-          pathEnd {
-            get {
-              complete(ToResponseMarshallable(transfersService.getAll(internal = true)))
-            } ~
             path(Segment) { customerId =>
+              pathPrefix("send") {
+                pathEnd {
+                  post {
+                    entity(as[TransferReq]) { req =>
+                      complete(ToResponseMarshallable(sendMoney(customerId)(_)))
+                    }
+                  }
+                }
+              }
+            } ~
+            pathPrefix("receive") {
               pathEnd {
                 post {
                   entity(as[TransferReq]) { req =>
-                    complete(ToResponseMarshallable(internal(customerId)))
+                    complete(ToResponseMarshallable(receiveMoney _))
                   }
                 }
               }
             }
+        } ~
+          pathPrefix("internal") {
+            pathEnd {
+              get {
+                complete(ToResponseMarshallable(transfersService.getAll(internal = true)))
+              } ~
+                path(Segment) { customerId =>
+                  pathEnd {
+                    post {
+                      entity(as[TransferReq]) { req =>
+                        complete(ToResponseMarshallable(internal(customerId)(_)))
+                      }
+                    }
+                  }
+                }
+            }
           }
-        }
       }
   }
 
   def internal(customerId: String)(req: TransferReq) = {
-    transfersService.internal(customerId, req) {
+    transfersService.internal(customerId, req) match {
       case Some(balance) => balance
       case None => BadRequest
     }

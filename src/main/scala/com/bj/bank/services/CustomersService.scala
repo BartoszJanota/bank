@@ -6,7 +6,7 @@ import scala.collection.mutable
 
 class CustomersService(accountsService: AccountsService) {
 
-  val customers: mutable.Map[String, Customer] = mutable.Map.empty
+  val customers: mutable.LinkedHashMap[String, Customer] = mutable.LinkedHashMap.empty
 
   def create(req: CustomerReq) = {
     val customer = Customer(req)
