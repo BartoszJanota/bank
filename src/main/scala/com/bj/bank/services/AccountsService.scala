@@ -2,7 +2,7 @@ package com.bj.bank.services
 
 import java.util.concurrent.ConcurrentHashMap
 
-import com.bj.bank.exceptions.{AccountNotFoundEx, CustomerNotFoundEx, NotEnoughMoneyEx}
+import com.bj.bank.exceptions.{AccountNotFoundEx, CustomerNotFoundEx, InternalException, NotEnoughMoneyEx}
 import com.bj.bank.models.Account._
 import com.bj.bank.models.{Account, AccountReq, CustomerReq, TransferReq}
 
@@ -71,7 +71,7 @@ class AccountsService(implicit val executionContext: ExecutionContext) {
   }
 
 
-  def deductMoney(customerId: String, accNumber: String, amount: BigDecimal) = {
+  def deductMoney(customerId: String, accNumber: String, amount: BigDecimal): Either[InternalException, BigDecimal] = {
     accounts.get(customerId) match {
       case Some(customerAccounts) =>
         if (customerAccounts.containsKey(accNumber)) {
@@ -85,13 +85,13 @@ class AccountsService(implicit val executionContext: ExecutionContext) {
             Left(NotEnoughMoneyEx(newBalance))
           }
         } else {
-          Left(AccountNotFoundEx)
+          Left(AccountNotFoundEx(accNumber))
         }
-      case None => Left(CustomerNotFoundEx)
+      case None => Left(CustomerNotFoundEx(customerId))
     }
   }
 
-  def transfer(fromCustomerId: String, toCustomerId: String, req: TransferReq) = {
+  def transfer(fromCustomerId: String, toCustomerId: String, req: TransferReq): Either[InternalException, (BigDecimal, BigDecimal)] = {
     accounts.get(fromCustomerId) match {
       case Some(fromCustomerAccounts) =>
         val fromAccount = fromCustomerAccounts.get(req.fromAccNumber)
@@ -106,7 +106,7 @@ class AccountsService(implicit val executionContext: ExecutionContext) {
         } else {
           Left(NotEnoughMoneyEx(fromNewBalance))
         }
-      case None => Left(CustomerNotFoundEx)
+      case None => Left(CustomerNotFoundEx(fromCustomerId))
     }
   }
 

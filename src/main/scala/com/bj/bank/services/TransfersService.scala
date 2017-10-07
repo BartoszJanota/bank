@@ -1,5 +1,6 @@
 package com.bj.bank.services
 
+import com.bj.bank.exceptions.{InternalException, NotEnoughMoneyEx}
 import com.bj.bank.models.Transfer._
 import com.bj.bank.models.{Transfer, TransferReq, TransferRes}
 
@@ -20,7 +21,7 @@ class TransfersService(accountsService: AccountsService)(implicit val executionC
               case Right(balance: (BigDecimal, BigDecimal)) =>
                 transfers += transfer("INTERNAL", "SENT", fromCustomerId, req, balance._1)
                 transfers += transfer("INTERNAL", "RECEIVED", toCustomerId, req, balance._2)
-                TransferRes(balance._1, balance._2)
+                Some(TransferRes(balance._1, balance._2))
               case Left(ex) =>
                 transfers += transfer("INTERNAL", customerId, req, ex)
                 None
@@ -35,10 +36,10 @@ class TransfersService(accountsService: AccountsService)(implicit val executionC
     accountsService.deductMoney(customerId, req.fromAccNumber, req.amount) match {
       case Right(balance) =>
         transfers += transfer("OUTGOING", "COMPLETED", customerId, req, balance)
-        Some(balance)
-      case Left(ex: Exception) =>
+        Right(balance)
+      case Left(ex: NotEnoughMoneyEx) =>
         transfers += transfer("OUTGOING", customerId, req, ex)
-        None
+        Left(ex)
     }
   }
 
@@ -50,7 +51,7 @@ class TransfersService(accountsService: AccountsService)(implicit val executionC
           case Right(balance) =>
             transfers += transfer("INCOMING", "COMPLETED", customerId, req, balance)
             Some(balance)
-          case Left(ex: Exception) =>
+          case Left(ex: InternalException) =>
             transfers += transfer("INCOMING", customerId, req, ex)
           None
         }

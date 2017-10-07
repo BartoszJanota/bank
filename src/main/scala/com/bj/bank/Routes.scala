@@ -1,10 +1,11 @@
 package com.bj.bank
 
 import akka.http.scaladsl.marshalling.ToResponseMarshallable
-import akka.http.scaladsl.model.StatusCodes
+import akka.http.scaladsl.model.{HttpResponse, StatusCodes}
 import akka.http.scaladsl.model.StatusCodes._
 import akka.http.scaladsl.server.Directives
-import com.bj.bank.models.{AccountReq, CustomerReq, TransferReq}
+import com.bj.bank.exceptions.InternalException
+import com.bj.bank.models.{AccountReq, Balance, CustomerReq, TransferReq}
 import com.bj.bank.services.{AccountsService, CustomersService, TransfersService}
 import de.heikoseeberger.akkahttpjson4s.Json4sSupport
 import org.json4s.ext.JodaTimeSerializers
@@ -43,32 +44,28 @@ trait Routes extends Directives with Json4sSupport {
         path(Segment) { customerId =>
           pathEnd {
             get {
-              complete(ToResponseMarshallable(fetchCustomer(customerId)))
+              complete(fetchCustomer(customerId))
             }
-          } ~
-            pathPrefix("accounts") {
-              pathEnd {
-                get {
-                  complete(ToResponseMarshallable {
-                    fetchAllCustomerAccounts(customerId)
-                  })
-                } ~
-                  post {
-                    entity(as[AccountReq]) { req =>
-                      complete(ToResponseMarshallable(addAccount(customerId, req)))
-                    }
-                  }
-              }
+          }
+        } ~
+        path(Segment / "accounts") { customerId =>
+          pathEnd {
+            get {
+              complete(fetchAllCustomerAccounts(customerId))
             } ~
-            path(Segment) { accNumber =>
-              pathEnd {
-                get {
-                  complete(ToResponseMarshallable {
-                    fetchCustomerAccount(customerId, accNumber)
-                  })
+              post {
+                entity(as[AccountReq]) { req =>
+                  complete(ToResponseMarshallable(addAccount(customerId, req)))
                 }
               }
+          }
+        } ~
+        path(Segment / "accounts" / Segment) { (customerId, accNumber) =>
+          pathEnd {
+            get {
+              complete(fetchCustomerAccount(customerId, accNumber))
             }
+          }
         }
     } ~
       pathPrefix("transfers") {
@@ -78,13 +75,11 @@ trait Routes extends Directives with Json4sSupport {
               complete(ToResponseMarshallable(transfersService.getAll(internal = false)))
             }
           } ~
-            path(Segment) { customerId =>
-              pathPrefix("send") {
-                pathEnd {
-                  post {
-                    entity(as[TransferReq]) { req =>
-                      complete(ToResponseMarshallable(sendMoney(customerId)(_)))
-                    }
+            path(Segment / "send") { customerId =>
+              pathEnd {
+                post {
+                  entity(as[TransferReq]) { req =>
+                    complete(sendMoney(customerId, req))
                   }
                 }
               }
@@ -133,10 +128,12 @@ trait Routes extends Directives with Json4sSupport {
     }
   }
 
-  private def sendMoney(customerId: String)(req: TransferReq) = {
+  private def sendMoney(customerId: String, req: TransferReq): ToResponseMarshallable = {
     transfersService.send(customerId, req) match {
-      case Some(balance) => balance
-      case None => BadRequest
+      case Right(balance: BigDecimal) =>
+        Created -> Balance(balance)
+      case Left(ex: InternalException) =>
+        BadRequest -> ex.message
     }
   }
 
@@ -149,22 +146,22 @@ trait Routes extends Directives with Json4sSupport {
 
   private def fetchCustomerAccount(customerId: String, accNumber: String) = {
     accountsService.get(customerId, accNumber) match {
-      case Some(account) => account
-      case None => NotFound
+      case Some(account) => OK -> account
+      case None => NotFound -> "Couldn't find a given account"
     }
   }
 
-  private def fetchCustomer(customerId: String) = {
+  private def fetchCustomer(customerId: String): ToResponseMarshallable = {
     customersService.get(customerId) match {
-      case Some(customer) => customer
-      case None => NotFound
+      case Some(customer) => OK -> customer
+      case None => NotFound -> "Couldn't find a given customer"
     }
   }
 
-  def fetchAllCustomerAccounts(customerId: String) = {
+  def fetchAllCustomerAccounts(customerId: String): ToResponseMarshallable = {
     accountsService.getAllFor(customerId) match {
-      case Some(accounts) => accounts.values()
-      case None => NotFound
+      case Some(accounts) => OK -> accounts.values()
+      case None => NotFound -> "Couldn't find any customers"
     }
   }
 }

@@ -1,7 +1,11 @@
 package com.bj.bank.exceptions
 
-case class NotEnoughMoneyEx(saldo: BigDecimal) extends Exception
+trait InternalException{
+  def message: Object
+}
 
-object AccountNotFoundEx extends Exception
+case class NotEnoughMoneyEx(message: BigDecimal) extends InternalException
 
-object CustomerNotFoundEx extends Exception
+case class AccountNotFoundEx(message: String) extends InternalException
+
+case class CustomerNotFoundEx(message: String) extends InternalException

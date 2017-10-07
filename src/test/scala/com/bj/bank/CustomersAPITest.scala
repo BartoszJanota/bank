@@ -14,9 +14,10 @@ import org.mockito.Matchers.any
 
 import scala.concurrent.ExecutionContextExecutor
 import akka.http.scaladsl.unmarshalling.Unmarshaller._
+import org.mockito.Mock
 
 
-class CustomersServiceTest extends WordSpec with BeforeAndAfter with Matchers with ScalatestRouteTest with MockitoSugar with Routes {
+class CustomersAPITest extends WordSpec with BeforeAndAfter with Matchers with ScalatestRouteTest with MockitoSugar with Routes {
 
   implicit val executionContext: ExecutionContextExecutor = system.dispatcher
   override implicit val serialization = native.Serialization
@@ -27,7 +28,8 @@ class CustomersServiceTest extends WordSpec with BeforeAndAfter with Matchers wi
   var transfersService: TransfersService = _
 
   before {
-    accountsService = mock[AccountsService]
+    //accountsService = Mock[AccountsService] // <- if we want to write UnitTests, Mocks are also available
+    accountsService = new AccountsService()
     customersService = new CustomersService(accountsService)
     transfersService = new TransfersService(accountsService)
   }
@@ -35,15 +37,14 @@ class CustomersServiceTest extends WordSpec with BeforeAndAfter with Matchers wi
   val customerReq1 = CustomerReq("Tom Hanks", "tom@hanks.xxx", "USD", 1000)
   val customerReq2 = CustomerReq("Penelope Cruze", "Penelope@Cruze.xxx", "USD", 3000)
 
-  private val account1 = Account(customerReq1)
-  private val account2 = Account(customerReq2)
+  //private val mockAccount1 = Account(customerReq1)
+  //private val mockAccount2 = Account(customerReq2)
 
-
-  "The customer service" should {
+  "The customers API" should {
 
     "create a customer" in {
 
-      when(accountsService.create(any[String], any[CustomerReq])).thenReturn(account1)
+      //when(accountsService.create(any[String], any[CustomerReq])).thenReturn(mockAccount1)
 
       Post("/bank/customers", customerReq1) ~> routes ~> check {
         status shouldEqual StatusCodes.Created
@@ -54,9 +55,24 @@ class CustomersServiceTest extends WordSpec with BeforeAndAfter with Matchers wi
       }
     }
 
+    "create an account for a new customer" in {
+
+      //when(accountsService.create(any[String], any[CustomerReq])).thenReturn(mockAccount1)
+
+      Post("/bank/customers", customerReq1) ~> routes ~> check {
+        status shouldEqual StatusCodes.Created
+
+        val account = responseAs[(Customer, Account)]._2
+
+        account.balance shouldEqual 1000
+        account.currency shouldBe "USD"
+        account.number nonEmpty
+      }
+    }
+
     "lookup for a given customer" in {
 
-      when(accountsService.create(any[String], any[CustomerReq])).thenReturn(account1)
+      //when(accountsService.create(any[String], any[CustomerReq])).thenReturn(mockAccount1)
 
       val customerId = customersService.create(customerReq1)._1.id
 
@@ -70,9 +86,20 @@ class CustomersServiceTest extends WordSpec with BeforeAndAfter with Matchers wi
       }
     }
 
+    "not lookup for a non existing customer" in {
+
+      val nonExistingCustomerId = "32432refwm23f23"
+
+      Get("/bank/customers/" + nonExistingCustomerId) ~> routes ~> check {
+
+        status shouldEqual StatusCodes.NotFound
+
+      }
+    }
+
     "return all bank customers" in {
 
-      when(accountsService.create(any[String], any[CustomerReq])).thenReturn(account1).thenReturn(account2)
+      //when(accountsService.create(any[String], any[CustomerReq])).thenReturn(mockAccount1).thenReturn(mockAccount2)
 
       customersService.create(customerReq1)
       customersService.create(customerReq2)
