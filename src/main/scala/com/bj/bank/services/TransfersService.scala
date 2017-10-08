@@ -1,6 +1,6 @@
 package com.bj.bank.services
 
-import com.bj.bank.exceptions.{InternalException, NotEnoughMoneyEx}
+import com.bj.bank.exceptions.{AccountNotFoundEx, CustomerNotFoundEx, InternalException, NotEnoughMoneyEx}
 import com.bj.bank.models.Transfer._
 import com.bj.bank.models.{Transfer, TransferReq, TransferRes}
 
@@ -21,14 +21,14 @@ class TransfersService(accountsService: AccountsService)(implicit val executionC
               case Right(balance: (BigDecimal, BigDecimal)) =>
                 transfers += transfer("INTERNAL", "SENT", fromCustomerId, req, balance._1)
                 transfers += transfer("INTERNAL", "RECEIVED", toCustomerId, req, balance._2)
-                Some(TransferRes(balance._1, balance._2))
+                Right(TransferRes(balance._1, balance._2))
               case Left(ex) =>
                 transfers += transfer("INTERNAL", customerId, req, ex)
-                None
+                Left(ex)
             }
-          case None => None
+          case None => Left(AccountNotFoundEx(req.toAccNumber))
         }
-      case None => None
+      case None => Left(CustomerNotFoundEx(customerId))
     }
   }
 
@@ -40,6 +40,7 @@ class TransfersService(accountsService: AccountsService)(implicit val executionC
       case Left(ex: NotEnoughMoneyEx) =>
         transfers += transfer("OUTGOING", customerId, req, ex)
         Left(ex)
+      case Left(ex: InternalException) => Left(ex)
     }
   }
 
@@ -50,12 +51,12 @@ class TransfersService(accountsService: AccountsService)(implicit val executionC
         accountsService.addMoney(customerId, req.toAccNumber, req.amount) match {
           case Right(balance) =>
             transfers += transfer("INCOMING", "COMPLETED", customerId, req, balance)
-            Some(balance)
+            Right(balance)
           case Left(ex: InternalException) =>
             transfers += transfer("INCOMING", customerId, req, ex)
-          None
+            Left(ex)
         }
-      case None => None
+      case None => Left(AccountNotFoundEx(req.toAccNumber))
     }
   }
 

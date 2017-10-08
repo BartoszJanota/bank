@@ -12,9 +12,9 @@ import scala.concurrent.ExecutionContext
 class AccountsService(implicit val executionContext: ExecutionContext) {
   val accounts: mutable.Map[String, ConcurrentHashMap[String, Account]] = mutable.Map.empty
 
-  def lookupInternalSender(customerId: String, fromAccNumber: String) = {
-    accounts.get(customerId).flatMap {customerAccounts =>
-      if (customerAccounts.contains(fromAccNumber)){
+  def lookupInternalSender(customerId: String, fromAccNumber: String): Option[String] = {
+    accounts.get(customerId).flatMap { customerAccounts =>
+      if (customerAccounts.containsKey(fromAccNumber)) {
         Some(customerId)
       } else {
         None

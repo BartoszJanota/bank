@@ -3,7 +3,7 @@ package com.bj.bank
 import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import akka.http.scaladsl.unmarshalling.Unmarshaller._
-import com.bj.bank.models.{Account, AccountReq, Customer, CustomerReq}
+import com.bj.bank.models.{Account, AccountReq, CustomerReq}
 import com.bj.bank.services.{AccountsService, CustomersService, TransfersService}
 import org.json4s.ext.JodaTimeSerializers
 import org.json4s.{DefaultFormats, Formats, native}
@@ -44,10 +44,10 @@ class AccountsAPITest extends WordSpec with BeforeAndAfter with Matchers with Sc
       Post("/bank/customers/" + customerId + "/accounts", accountReq1) ~> routes ~> check {
         //status shouldEqual StatusCodes.Created
 
-        val account = responseAs[Customer]
+        val account = responseAs[Account]
 
-        //account.currency shouldBe "SEK"
-        //account.balance shouldEqual 1234
+        account.currency shouldBe "SEK"
+        account.balance shouldEqual 1234
       }
     }
 

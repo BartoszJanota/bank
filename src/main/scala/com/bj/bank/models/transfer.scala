@@ -15,7 +15,7 @@ object Transfer {
     ex match {
       case AccountNotFoundEx(_) => Transfer(transferType, "REJECTED_CUSTOMER_ACC_NOT_FOUND", req.fromAccNumber, req.toAccNumber, None, None, customerId)
       case CustomerNotFoundEx(_) => Transfer(transferType, "REJECTED_CUSTOMER_NOT_FOUND", req.fromAccNumber, req.toAccNumber, None, None, customerId)
-      case NotEnoughMoneyEx(balance) => Transfer(transferType, "REJECTED_CUSTOMER_NOT_FOUND", req.fromAccNumber, req.toAccNumber, Some(balance), Some(req.amount), customerId)
+      case NotEnoughMoneyEx(balance) => Transfer(transferType, "REJECTED_NOT_ENOUGH_MONEY", req.fromAccNumber, req.toAccNumber, Some(balance), Some(req.amount), customerId)
     }
   }
 

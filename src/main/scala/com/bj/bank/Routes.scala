@@ -4,7 +4,7 @@ import akka.http.scaladsl.marshalling.ToResponseMarshallable
 import akka.http.scaladsl.model.{HttpResponse, StatusCodes}
 import akka.http.scaladsl.model.StatusCodes._
 import akka.http.scaladsl.server.Directives
-import com.bj.bank.exceptions.InternalException
+import com.bj.bank.exceptions.{InternalException, NotEnoughMoneyEx}
 import com.bj.bank.models.{AccountReq, Balance, CustomerReq, TransferReq}
 import com.bj.bank.services.{AccountsService, CustomersService, TransfersService}
 import de.heikoseeberger.akkahttpjson4s.Json4sSupport
@@ -88,7 +88,7 @@ trait Routes extends Directives with Json4sSupport {
               pathEnd {
                 post {
                   entity(as[TransferReq]) { req =>
-                    complete(ToResponseMarshallable(receiveMoney _))
+                    complete(receiveMoney(req))
                   }
                 }
               }
@@ -98,42 +98,44 @@ trait Routes extends Directives with Json4sSupport {
             pathEnd {
               get {
                 complete(ToResponseMarshallable(transfersService.getAll(internal = true)))
-              } ~
-                path(Segment) { customerId =>
-                  pathEnd {
-                    post {
-                      entity(as[TransferReq]) { req =>
-                        complete(ToResponseMarshallable(internal(customerId)(_)))
-                      }
-                    }
+              }
+            }~
+            path(Segment) { customerId =>
+              pathEnd {
+                post {
+                  entity(as[TransferReq]) { req =>
+                    complete(internal(customerId, req))
                   }
                 }
+              }
             }
           }
       }
   }
 
-  def internal(customerId: String)(req: TransferReq) = {
+  def internal(customerId: String, req: TransferReq): ToResponseMarshallable = {
     transfersService.internal(customerId, req) match {
-      case Some(balance) => balance
-      case None => BadRequest
+      case Right(transferRes) => Created -> transferRes
+      case Left(ex: NotEnoughMoneyEx) => BadRequest -> Balance(ex.message)
+      case Left(ex) => BadRequest -> ex.message
     }
   }
 
 
-  private def receiveMoney()(req: TransferReq) = {
+  private def receiveMoney(req: TransferReq): ToResponseMarshallable = {
     transfersService.receive(req) match {
-      case Some(balance) => balance
-      case None => BadRequest
+      case Right(balance) => Created -> Balance(balance)
+      case Left(ex: InternalException) =>
+        print(ex)
+        BadRequest -> ex.message
     }
   }
 
   private def sendMoney(customerId: String, req: TransferReq): ToResponseMarshallable = {
     transfersService.send(customerId, req) match {
-      case Right(balance: BigDecimal) =>
-        Created -> Balance(balance)
-      case Left(ex: InternalException) =>
-        BadRequest -> ex.message
+      case Right(balance: BigDecimal) => Created -> Balance(balance)
+      case Left(ex: NotEnoughMoneyEx) => BadRequest -> Balance(ex.message)
+      case Left(ex: InternalException) => BadRequest -> ex.message
     }
   }
 
